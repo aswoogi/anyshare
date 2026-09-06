@@ -1,26 +1,41 @@
 {
-  "name": "AnyShare - Personal Capture & Archive",
+  "name": "AnyShare",
   "short_name": "AnyShare",
-  "description": "Minimalist all-in-one capture & archive webapp",
+  "description": "Personal Capture & Archive WebApp",
   "start_url": "/",
+  "id": "/",
   "display": "standalone",
   "background_color": "#f8f9fa",
   "theme_color": "#f8f9fa",
   "orientation": "portrait-primary",
   "icons": [
     {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
       "src": "/icon.svg",
       "sizes": "any",
-      "type": "image/svg+xml"
-    },
-    {
-      "src": "/icon.svg",
-      "sizes": "192x192",
-      "type": "image/svg+xml"
-    },
-    {
-      "src": "/icon.svg",
-      "sizes": "512x512",
       "type": "image/svg+xml"
     }
   ],
