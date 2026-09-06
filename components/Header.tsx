@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Radio, User, LogOut, LogIn } from 'lucide-react';
+import { Radio, User, LogOut, LogIn, HardDrive } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -14,6 +14,8 @@ interface HeaderProps {
   currentUser: SupabaseUser | null;
   onOpenAuth: () => void;
   onSignOut: () => void;
+  onOpenStorage?: () => void;
+  totalStorageText?: string;
 }
 
 export function Header({
@@ -25,6 +27,8 @@ export function Header({
   currentUser,
   onOpenAuth,
   onSignOut,
+  onOpenStorage,
+  totalStorageText,
 }: HeaderProps) {
   return (
     <header className="pt-8 pb-4">
@@ -67,6 +71,19 @@ export function Header({
             >
               <LogIn className="w-3.5 h-3.5" />
               <span>로그인</span>
+            </button>
+          )}
+
+          {/* Storage Usage Button */}
+          {onOpenStorage && (
+            <button
+              type="button"
+              onClick={onOpenStorage}
+              title="저장 용량 현황 보기"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-50 hover:bg-gray-100 dark:bg-surface-800 dark:hover:bg-surface-700 border border-black/[0.04] dark:border-white/[0.05] text-[11px] text-gray-500 dark:text-gray-400 transition"
+            >
+              <HardDrive className="w-3.5 h-3.5 text-amber-500" />
+              <span className="font-mono font-medium">{totalStorageText || '용량'}</span>
             </button>
           )}
 

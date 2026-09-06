@@ -7,9 +7,11 @@ import { QuickInputBar } from '@/components/QuickInputBar';
 import { CategoryFilter } from '@/components/CategoryFilter';
 import { FeedList } from '@/components/FeedList';
 import { AuthModal } from '@/components/AuthModal';
+import { StorageUsageModal } from '@/components/StorageUsageModal';
 import { useItemsRealtime } from '@/hooks/useItemsRealtime';
 import { useGlobalPaste } from '@/hooks/useGlobalPaste';
 import { CategoryFilterType } from '@/types/item';
+import { formatBytes } from '@/lib/utils';
 import { ShieldCheck } from 'lucide-react';
 
 function MainFeedContent() {
@@ -17,6 +19,7 @@ function MainFeedContent() {
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilterType>('all');
   const [pastePayload, setPastePayload] = useState<{ text?: string; file?: File } | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isStorageModalOpen, setIsStorageModalOpen] = useState(false);
 
   const searchParams = useSearchParams();
 
@@ -33,6 +36,12 @@ function MainFeedContent() {
     deleteItem,
     signOut,
   } = useItemsRealtime();
+
+  // Compute total file storage usage
+  const totalStorageBytes = items
+    .filter((it) => it.type === 'file')
+    .reduce((acc, it) => acc + Number(it.metadata?.file?.size || 0), 0);
+  const totalStorageText = formatBytes(totalStorageBytes);
 
   // PWA Web Share Target Handler
   useEffect(() => {
@@ -88,7 +97,7 @@ function MainFeedContent() {
 
   return (
     <div className="max-w-[680px] mx-auto px-4 sm:px-6 pb-24">
-      {/* Top Header with 2 Minimal Tabs & Auth State */}
+      {/* Top Header with 2 Minimal Tabs & Auth State & Storage Monitor */}
       <Header
         activeTab={activeTab}
         onTabChange={(tab) => setActiveTab(tab)}
@@ -98,6 +107,8 @@ function MainFeedContent() {
         currentUser={currentUser}
         onOpenAuth={() => setIsAuthOpen(true)}
         onSignOut={signOut}
+        onOpenStorage={() => setIsStorageModalOpen(true)}
+        totalStorageText={totalStorageText}
       />
 
       {/* Smart Quick Input Bar (Always accessible at top) */}
@@ -164,6 +175,14 @@ function MainFeedContent() {
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
         onSuccess={() => setIsAuthOpen(false)}
+      />
+
+      {/* Storage & DB Usage Modal */}
+      <StorageUsageModal
+        isOpen={isStorageModalOpen}
+        onClose={() => setIsStorageModalOpen(false)}
+        items={items}
+        isLoggedIn={!!currentUser}
       />
     </div>
   );
