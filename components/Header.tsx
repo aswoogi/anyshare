@@ -1,7 +1,7 @@
 'use client';
 
-import React from 'react';
-import { Radio, User, LogOut, LogIn, HardDrive } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { User, LogOut, LogIn, HardDrive } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -30,9 +30,28 @@ export function Header({
   onOpenStorage,
   totalStorageText,
 }: HeaderProps) {
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    }
+
+    if (isUserMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isUserMenuOpen]);
+
   return (
     <header className="pt-8 pb-4">
-      {/* Title, User status, Realtime indicator */}
+      {/* Title & Top Right Actions */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
@@ -40,60 +59,86 @@ export function Header({
           </h1>
         </div>
 
-        {/* Right side: User Profile & Realtime status */}
-        <div className="flex items-center gap-2">
+        {/* Right side icons: Storage, Realtime, Profile */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* 1. Storage Usage Icon Button */}
+          {onOpenStorage && (
+            <button
+              type="button"
+              onClick={onOpenStorage}
+              title={`저장 용량 현황 (${totalStorageText || '0 B'})`}
+              className="p-2 rounded-full text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-surface-800 transition"
+            >
+              <HardDrive className="w-4 h-4 text-amber-500" />
+            </button>
+          )}
+
+          {/* 2. Realtime Status Indicator (Icon Only) */}
+          <div
+            className="p-2 rounded-full flex items-center justify-center cursor-default"
+            title={isConnected ? '실시간 동기화 연결됨 (LIVE)' : '실시간 연결 중...'}
+          >
+            <span
+              className={cn(
+                'w-2.5 h-2.5 rounded-full transition-colors',
+                isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'
+              )}
+            />
+          </div>
+
+          {/* 3. User Profile Dropdown (Icon Only by default, reveals ID on click) */}
           {currentUser ? (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100/80 dark:bg-surface-800 border border-black/[0.04] dark:border-white/[0.05] text-xs">
-              <User className="w-3.5 h-3.5 text-gray-500" />
-              <span className="max-w-[120px] truncate text-gray-700 dark:text-gray-300 font-medium">
-                {currentUser.email?.split('@')[0]}
-              </span>
+            <div className="relative" ref={userMenuRef}>
               <button
                 type="button"
-                onClick={onSignOut}
-                title="로그아웃"
-                className="ml-1 p-0.5 text-gray-400 hover:text-red-500 transition"
+                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                title="계정 정보"
+                className={cn(
+                  'p-2 rounded-full transition-colors flex items-center justify-center',
+                  isUserMenuOpen
+                    ? 'bg-gray-200 dark:bg-surface-700 text-gray-900 dark:text-gray-100'
+                    : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-surface-800'
+                )}
               >
-                <LogOut className="w-3.5 h-3.5" />
+                <User className="w-4 h-4" />
               </button>
+
+              {/* Popover Menu on click */}
+              {isUserMenuOpen && (
+                <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-surface-900 rounded-xl p-3 shadow-floating border border-black/[0.08] dark:border-white/[0.08] z-30 animate-fade-in">
+                  <div className="px-1 py-1 border-b border-gray-100 dark:border-surface-800 mb-2">
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 font-medium">
+                      로그인된 계정
+                    </p>
+                    <p className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate mt-0.5">
+                      {currentUser.email}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      onSignOut();
+                    }}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition font-medium text-left"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>로그아웃</span>
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <button
               type="button"
               onClick={onOpenAuth}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-xs font-medium transition"
+              title="로그인"
+              className="p-2 rounded-full text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition"
             >
-              <LogIn className="w-3.5 h-3.5" />
-              <span>로그인</span>
+              <LogIn className="w-4 h-4" />
             </button>
           )}
-
-          {/* Storage Usage Button */}
-          {onOpenStorage && (
-            <button
-              type="button"
-              onClick={onOpenStorage}
-              title="저장 용량 현황 보기"
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-50 hover:bg-gray-100 dark:bg-surface-800 dark:hover:bg-surface-700 border border-black/[0.04] dark:border-white/[0.05] text-[11px] text-gray-500 dark:text-gray-400 transition"
-            >
-              <HardDrive className="w-3.5 h-3.5 text-amber-500" />
-              <span className="font-mono font-medium">{totalStorageText || '용량'}</span>
-            </button>
-          )}
-
-          {/* Realtime Live Pulse */}
-          <div
-            className="flex items-center gap-1.5 text-[11px] text-gray-400 px-2 py-1 rounded-full bg-gray-50 dark:bg-surface-800 border border-black/[0.04] dark:border-white/[0.05]"
-            title={isConnected ? '실시간 동기화 활성화됨' : '실시간 연결 중...'}
-          >
-            <span
-              className={cn(
-                'w-2 h-2 rounded-full',
-                isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'
-              )}
-            />
-            <span className="font-mono">{isConnected ? 'LIVE' : 'SYNC'}</span>
-          </div>
         </div>
       </div>
 
