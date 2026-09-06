@@ -35,15 +35,9 @@ export function Header({
       {/* Title, User status, Realtime indicator */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100 flex items-center gap-2">
+          <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
             AnyShare
-            <span className="text-[10px] font-normal px-2 py-0.5 rounded-full bg-gray-100 dark:bg-surface-800 text-gray-500">
-              Personal Archive
-            </span>
           </h1>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-            기억해야 할 모든 것들을 즉시 캡처하고 동기화합니다
-          </p>
         </div>
 
         {/* Right side: User Profile & Realtime status */}
