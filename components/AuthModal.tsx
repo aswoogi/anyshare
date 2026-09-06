@@ -69,9 +69,11 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
       console.error('Auth error:', err);
       let msg = err.message || '인증 중 문제가 발생했습니다.';
       if (msg.includes('Invalid login credentials')) {
-        msg = '이메일 또는 비밀번호가 일치하지 않습니다.';
+        msg = '이메일 또는 비밀번호가 일치하지 않습니다. (아직 가입하지 않으셨다면 [회원가입] 탭을 눌러주세요)';
+      } else if (msg.includes('Invalid API key')) {
+        msg = 'Supabase API 키가 유효하지 않습니다. Vercel 또는 .env.local의 NEXT_PUBLIC_SUPABASE_ANON_KEY 설정을 확인해 주세요.';
       } else if (msg.includes('User already registered')) {
-        msg = '이미 가입된 이메일입니다. 로그인해 주세요.';
+        msg = '이미 가입된 이메일입니다. [로그인] 탭에서 로그인해 주세요.';
       } else if (msg.includes('Password should be at least')) {
         msg = '비밀번호는 최소 6자 이상이어야 합니다.';
       }
