@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { User, LogOut, LogIn, HardDrive } from 'lucide-react';
+import { User, LogOut, LogIn, HardDrive, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -16,6 +16,8 @@ interface HeaderProps {
   onSignOut: () => void;
   onOpenStorage?: () => void;
   totalStorageText?: string;
+  onSyncNotifications?: () => void;
+  pendingTodoCount?: number;
 }
 
 export function Header({
@@ -29,6 +31,8 @@ export function Header({
   onSignOut,
   onOpenStorage,
   totalStorageText,
+  onSyncNotifications,
+  pendingTodoCount = 0,
 }: HeaderProps) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -59,8 +63,23 @@ export function Header({
           </h1>
         </div>
 
-        {/* Right side icons: Storage, Realtime, Profile */}
+        {/* Right side icons: Todo Notification Sync, Storage, Realtime, Profile */}
         <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* 0. Todo Notification Sync Button */}
+          {onSyncNotifications && (
+            <button
+              type="button"
+              onClick={onSyncNotifications}
+              title={`폰 알림창에 미완료 할 일(${pendingTodoCount}개) 카드 띄우기`}
+              className="relative p-2 rounded-full text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-surface-800 transition"
+            >
+              <Bell className="w-4 h-4 text-blue-500" />
+              {pendingTodoCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-blue-600 rounded-full ring-2 ring-white dark:ring-surface-900" />
+              )}
+            </button>
+          )}
+
           {/* 1. Storage Usage Icon Button */}
           {onOpenStorage && (
             <button

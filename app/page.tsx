@@ -12,6 +12,7 @@ import { useItemsRealtime } from '@/hooks/useItemsRealtime';
 import { useGlobalPaste } from '@/hooks/useGlobalPaste';
 import { CategoryFilterType } from '@/types/item';
 import { formatBytes } from '@/lib/utils';
+import { syncTodoNotifications } from '@/lib/notifications';
 import { ShieldCheck } from 'lucide-react';
 
 function MainFeedContent() {
@@ -90,6 +91,23 @@ function MainFeedContent() {
   const activeCount = items.filter((item) => !item.is_archived).length;
   const archiveCount = items.filter((item) => item.is_archived).length;
 
+  // Uncompleted Todo items count
+  const pendingTodos = items.filter(
+    (item) => item.type === 'todo' && !item.is_completed && !item.is_archived
+  );
+  const pendingTodoCount = pendingTodos.length;
+
+  const handleSyncNotifications = useCallback(async () => {
+    if (!currentUser) {
+      setIsAuthOpen(true);
+      return;
+    }
+    const result = await syncTodoNotifications(items);
+    if (!result.success) {
+      alert('스마트폰 브라우저 설정에서 "알림 허용" 권한을 활성화해 주세요.');
+    }
+  }, [currentUser, items]);
+
   // Current tab items for category counts
   const currentTabItems = items.filter((item) =>
     activeTab === 'active' ? !item.is_archived : item.is_archived
@@ -97,7 +115,7 @@ function MainFeedContent() {
 
   return (
     <div className="max-w-[680px] mx-auto px-4 sm:px-6 pb-24">
-      {/* Top Header with 2 Minimal Tabs & Auth State & Storage Monitor */}
+      {/* Top Header with 2 Minimal Tabs & Auth State & Storage Monitor & Todo Notification */}
       <Header
         activeTab={activeTab}
         onTabChange={(tab) => setActiveTab(tab)}
@@ -109,6 +127,8 @@ function MainFeedContent() {
         onSignOut={signOut}
         onOpenStorage={() => setIsStorageModalOpen(true)}
         totalStorageText={totalStorageText}
+        onSyncNotifications={handleSyncNotifications}
+        pendingTodoCount={pendingTodoCount}
       />
 
       {/* Smart Quick Input Bar (Always accessible at top) */}
