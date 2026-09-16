@@ -129,6 +129,14 @@ export function ItemCard({
   const remainingTime = item.expires_at ? getRemainingTimeText(item.expires_at) : null;
   const isExpired = remainingTime?.isExpired || false;
 
+  // Type-based left accent border colors
+  const typeAccentBorder = {
+    todo: 'border-l-[3.5px] border-l-blue-500',
+    link: 'border-l-[3.5px] border-l-emerald-500',
+    file: 'border-l-[3.5px] border-l-amber-500',
+    text: 'border-l-[3.5px] border-l-gray-400 dark:border-l-gray-500',
+  }[item.type];
+
   return (
     <div
       draggable={!isEditing}
@@ -138,23 +146,25 @@ export function ItemCard({
       onDrop={(e) => onDrop(e, index)}
       className={cn(
         'group relative bg-white dark:bg-surface-900 rounded-xl p-4 transition-all duration-200',
-        'border border-black/[0.05] dark:border-white/[0.06] hover:border-black/[0.12] dark:hover:border-white/[0.12]',
-        'shadow-[0_1px_3px_rgba(0,0,0,0.02)] hover:shadow-subtle',
-        item.is_completed && 'opacity-60 bg-gray-50/70 dark:bg-surface-950/40',
+        'border border-gray-200/90 dark:border-surface-700/90',
+        'hover:border-gray-300 dark:hover:border-surface-600',
+        'shadow-sm hover:shadow-md',
+        typeAccentBorder,
+        item.is_completed && 'opacity-60 bg-gray-50/80 dark:bg-surface-950/40 border-l-gray-300 dark:border-l-gray-700',
         isExpired && 'opacity-50',
         isDragging && 'opacity-30 scale-[0.98] border-dashed border-gray-400 dark:border-gray-500',
         isDragOver && 'ring-2 ring-blue-500/80 bg-blue-50/30 dark:bg-blue-950/20'
       )}
     >
-      {/* Quick Actions (Hover) */}
+      {/* Quick Actions */}
       {!isEditing && (
-        <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10 bg-white/90 dark:bg-surface-900/90 backdrop-blur-sm p-1 rounded-lg border border-black/[0.05] dark:border-white/[0.05]">
+        <div className="absolute top-2.5 right-2.5 flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity duration-150 z-10 bg-white/95 dark:bg-surface-900/95 backdrop-blur-sm p-1 rounded-lg border border-gray-200/80 dark:border-surface-700 shadow-xs">
           {/* Edit Button */}
           <button
             type="button"
             onClick={() => setIsEditing(true)}
             title="수정"
-            className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded transition"
+            className="p-1 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-md hover:bg-gray-100 dark:hover:bg-surface-800 transition"
           >
             <Pencil className="w-3.5 h-3.5" />
           </button>
@@ -163,7 +173,7 @@ export function ItemCard({
             type="button"
             onClick={() => handleCopy(item.content || item.title || '')}
             title="내용 복사"
-            className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded transition"
+            className="p-1 text-gray-500 hover:text-gray-900 dark:hover:text-gray-200 rounded-md hover:bg-gray-100 dark:hover:bg-surface-800 transition"
           >
             {copied ? <CheckCheck className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
           </button>
@@ -172,7 +182,7 @@ export function ItemCard({
             type="button"
             onClick={() => onToggleArchive(item.id, item.is_archived)}
             title={item.is_archived ? '보관 해제' : '보관함으로 이동'}
-            className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded transition"
+            className="p-1 text-gray-500 hover:text-gray-900 dark:hover:text-gray-200 rounded-md hover:bg-gray-100 dark:hover:bg-surface-800 transition"
           >
             {item.is_archived ? (
               <ArchiveRestore className="w-3.5 h-3.5" />
@@ -185,7 +195,7 @@ export function ItemCard({
             type="button"
             onClick={() => onDelete(item.id, item.metadata?.file?.storagePath)}
             title="삭제"
-            className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded transition"
+            className="p-1 text-gray-500 hover:text-red-600 dark:hover:text-red-400 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 transition"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>

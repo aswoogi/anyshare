@@ -34,38 +34,40 @@ export function CategoryFilter({
   ];
 
   return (
-    <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none text-xs">
-      {categories.map((cat) => {
-        const isActive = currentCategory === cat.key;
-        const count = counts[cat.key];
+    <div className="bg-gray-200/60 dark:bg-surface-800/80 p-1 rounded-2xl border border-black/[0.04] dark:border-white/[0.06] backdrop-blur-sm">
+      <div className="flex items-center gap-1 overflow-x-auto scrollbar-none text-xs">
+        {categories.map((cat) => {
+          const isActive = currentCategory === cat.key;
+          const count = counts[cat.key];
 
-        return (
-          <button
-            key={cat.key}
-            type="button"
-            onClick={() => onSelectCategory(cat.key)}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-full whitespace-nowrap transition-all duration-150 select-none font-medium',
-              isActive
-                ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 bg-gray-100/70 dark:bg-surface-800/80 hover:bg-gray-200/60 dark:hover:bg-surface-700/60'
-            )}
-          >
-            {cat.icon}
-            <span>{cat.label}</span>
-            <span
+          return (
+            <button
+              key={cat.key}
+              type="button"
+              onClick={() => onSelectCategory(cat.key)}
               className={cn(
-                'text-[10px] px-1.5 py-0.2 rounded-full font-mono',
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-xl whitespace-nowrap transition-all duration-200 select-none font-medium',
                 isActive
-                  ? 'bg-white/20 dark:bg-black/20 text-white dark:text-gray-900'
-                  : 'bg-black/[0.04] dark:bg-white/[0.06] text-gray-500 dark:text-gray-400'
+                  ? 'bg-white text-gray-900 dark:bg-surface-900 dark:text-gray-50 shadow-sm font-semibold'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/40 dark:hover:bg-white/[0.04]'
               )}
             >
-              {count}
-            </span>
-          </button>
-        );
-      })}
+              {cat.icon}
+              <span>{cat.label}</span>
+              <span
+                className={cn(
+                  'text-[10px] px-1.5 py-0.5 rounded-md font-mono transition-colors',
+                  isActive
+                    ? 'bg-gray-100 dark:bg-surface-800 text-gray-900 dark:text-gray-200 font-bold'
+                    : 'bg-black/[0.04] dark:bg-white/[0.06] text-gray-500 dark:text-gray-400'
+                )}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
