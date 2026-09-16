@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Item, ItemType, UpdateItemInput } from '@/types/item';
 import { User as SupabaseUser } from '@supabase/supabase-js';
@@ -11,6 +11,8 @@ export function useItemsRealtime(userId?: string) {
   const [loading, setLoading] = useState<boolean>(true);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const supabase = useMemo(() => createClient(), []);
+  // Track in-flight optimistic item IDs so Realtime INSERT doesn't duplicate them
+  const pendingTempIds = useRef<Set<string>>(new Set());
 
   // Sort helper: prioritize sort_order if present, fallback to created_at desc
   const sortItemsList = useCallback((list: Item[]): Item[] => {
@@ -106,9 +108,28 @@ export function useItemsRealtime(userId?: string) {
           if (payload.eventType === 'INSERT') {
             const newItem = payload.new as Item;
             setItems((prev) => {
+              // 1. If real ID already exists, update it
               if (prev.some((item) => item.id === newItem.id)) {
                 return prev.map((item) => (item.id === newItem.id ? newItem : item));
               }
+
+              // 2. Check if there is an in-flight optimistic temp item matching this content and type
+              const matchingTempIndex = prev.findIndex(
+                (item) =>
+                  item.id.startsWith('temp-') &&
+                  item.type === newItem.type &&
+                  item.content === newItem.content
+              );
+
+              if (matchingTempIndex !== -1) {
+                // Replace the optimistic temp item with the real inserted item from DB
+                const updated = [...prev];
+                const tempId = updated[matchingTempIndex].id;
+                pendingTempIds.current.delete(tempId);
+                updated[matchingTempIndex] = newItem;
+                return sortItemsList(updated);
+              }
+
               return sortItemsList([newItem, ...prev]);
             });
           } else if (payload.eventType === 'UPDATE') {
@@ -173,6 +194,7 @@ export function useItemsRealtime(userId?: string) {
         created_at: new Date().toISOString(),
       };
 
+      pendingTempIds.current.add(tempId);
       setItems((prev) => [optimisticItem, ...prev]);
 
       try {
@@ -196,17 +218,27 @@ export function useItemsRealtime(userId?: string) {
 
         if (error) {
           console.error('Failed to save item:', error);
+          pendingTempIds.current.delete(tempId);
           setItems((prev) => prev.filter((i) => i.id !== tempId));
           throw error;
         }
 
         if (data) {
-          setItems((prev) =>
-            prev.map((i) => (i.id === tempId ? (data as Item) : i))
-          );
+          pendingTempIds.current.delete(tempId);
+          setItems((prev) => {
+            // Check if real item was already inserted by Realtime
+            const alreadyHasRealItem = prev.some((i) => i.id === data.id);
+            if (alreadyHasRealItem) {
+              // Simply remove temp item if still present
+              return prev.filter((i) => i.id !== tempId);
+            }
+            // Replace temp item with real item
+            return prev.map((i) => (i.id === tempId ? (data as Item) : i));
+          });
           return data as Item;
         }
       } catch (err) {
+        pendingTempIds.current.delete(tempId);
         setItems((prev) => prev.filter((i) => i.id !== tempId));
         throw err;
       }

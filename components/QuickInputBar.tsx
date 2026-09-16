@@ -332,6 +332,8 @@ export function QuickInputBar({
               setContent(e.target.value);
             }}
             onKeyDown={(e) => {
+              // Ignore Enter during Korean/CJK IME composition to prevent double trigger
+              if (e.nativeEvent.isComposing) return;
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 handleSubmit();
