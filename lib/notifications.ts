@@ -67,20 +67,20 @@ export async function syncTodoNotifications(todoItems: Item[]): Promise<{ count:
       return { count: 0, success: true };
     }
 
-    // 1. Post Top Summary Notification (Pinned card format)
+    // Single Pinned Summary Notification (No individual cards)
     const topSummaryTitle = `AnyShare • 할 일 ${pendingTodos.length}개 대기 중`;
     const todoPreviewList = pendingTodos
-      .slice(0, 4)
+      .slice(0, 5)
       .map((t, idx) => `${idx + 1}. ${t.title || t.content}`)
       .join('\n');
-    const extraCount = pendingTodos.length > 4 ? ` 외 ${pendingTodos.length - 4}개 더 있음` : '';
+    const extraCount = pendingTodos.length > 5 ? ` 외 ${pendingTodos.length - 5}개 더 있음` : '';
 
     const summaryOptions: any = {
       body: `${todoPreviewList}${extraCount}`,
       icon: '/icons/icon-192x192.png',
       badge: '/icons/icon-192x192.png',
       tag: 'anyshare-todo-summary',
-      requireInteraction: true,
+      requireInteraction: false,
       renotify: true,
       data: {
         url: '/',
@@ -94,33 +94,38 @@ export async function syncTodoNotifications(todoItems: Item[]): Promise<{ count:
       new Notification(topSummaryTitle, summaryOptions);
     }
 
-    // 2. Post top priority individual cards (up to 3 distinct cards in notification tray)
-    for (const todo of pendingTodos.slice(0, 3)) {
-      const cardTitle = `📌 ${todo.title || todo.content || '할 일'}`;
-      const cardBody = (todo.content && todo.content !== todo.title) ? todo.content : 'AnyShare 할 일';
-
-      const cardOptions: any = {
-        body: cardBody,
-        icon: '/icons/icon-192x192.png',
-        badge: '/icons/icon-192x192.png',
-        tag: `anyshare-todo-${todo.id}`,
-        requireInteraction: false,
-        data: {
-          url: '/',
-          todoId: todo.id,
-        },
-      };
-
-      if (registration && registration.showNotification) {
-        await registration.showNotification(cardTitle, cardOptions);
-      } else {
-        new Notification(cardTitle, cardOptions);
-      }
-    }
-
     return { count: pendingTodos.length, success: true };
   } catch (err) {
     console.error('Failed to trigger todo notification:', err);
     return { count: pendingTodos.length, success: false };
   }
+}
+
+// Check if current time matches scheduled hours (8:00, 13:00, 18:00) and hasn't notified yet in the current slot
+export function checkAndTriggerScheduledNotification(todoItems: Item[]): void {
+  if (typeof window === 'undefined' || !isNotificationSupported()) return;
+  if (Notification.permission !== 'granted') return;
+
+  const now = new Date();
+  const currentHour = now.getHours(); // 0 - 23
+  const targetSlots = [8, 13, 18];
+
+  // Find if current hour is one of the target slots (or within that hour window)
+  const matchedSlot = targetSlots.find((h) => currentHour === h);
+  if (matchedSlot === undefined) return;
+
+  const todayDateStr = now.toISOString().slice(0, 10); // "YYYY-MM-DD"
+  const slotKey = `anyshare_notified_${todayDateStr}_${matchedSlot}`;
+
+  if (localStorage.getItem(slotKey)) {
+    // Already notified in this slot today
+    return;
+  }
+
+  // Trigger notification and save slot
+  syncTodoNotifications(todoItems).then((res) => {
+    if (res.success && res.count > 0) {
+      localStorage.setItem(slotKey, 'true');
+    }
+  });
 }

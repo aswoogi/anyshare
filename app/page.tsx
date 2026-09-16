@@ -12,7 +12,7 @@ import { useItemsRealtime } from '@/hooks/useItemsRealtime';
 import { useGlobalPaste } from '@/hooks/useGlobalPaste';
 import { CategoryFilterType } from '@/types/item';
 import { formatBytes } from '@/lib/utils';
-import { syncTodoNotifications } from '@/lib/notifications';
+import { syncTodoNotifications, checkAndTriggerScheduledNotification } from '@/lib/notifications';
 import { ShieldCheck } from 'lucide-react';
 
 function MainFeedContent() {
@@ -96,6 +96,30 @@ function MainFeedContent() {
     (item) => item.type === 'todo' && !item.is_completed && !item.is_archived
   );
   const pendingTodoCount = pendingTodos.length;
+
+  // Auto sync notifications on app startup and on scheduled hours (8am, 1pm, 6pm)
+  useEffect(() => {
+    if (!currentUser || loading || items.length === 0) return;
+
+    // 1. If notification permission is already granted, show/sync on app launch (once per session)
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      const sessionSyncedKey = 'anyshare_session_notified_' + new Date().toISOString().slice(0, 10);
+      if (!sessionStorage.getItem(sessionSyncedKey) && pendingTodoCount > 0) {
+        syncTodoNotifications(items);
+        sessionStorage.setItem(sessionSyncedKey, 'true');
+      }
+
+      // 2. Check 8:00, 13:00, 18:00 scheduled slots
+      checkAndTriggerScheduledNotification(items);
+
+      // 3. Periodic timer to check while app/tab is active
+      const interval = setInterval(() => {
+        checkAndTriggerScheduledNotification(items);
+      }, 60 * 1000); // Check every minute
+
+      return () => clearInterval(interval);
+    }
+  }, [currentUser, loading, items, pendingTodoCount]);
 
   const handleSyncNotifications = useCallback(async () => {
     if (!currentUser) {
