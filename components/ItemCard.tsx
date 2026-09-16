@@ -131,10 +131,10 @@ export function ItemCard({
 
   // Type-based left accent border colors
   const typeAccentBorder = {
-    todo: 'border-l-[3.5px] border-l-blue-500',
-    link: 'border-l-[3.5px] border-l-emerald-500',
-    file: 'border-l-[3.5px] border-l-amber-500',
-    text: 'border-l-[3.5px] border-l-gray-400 dark:border-l-gray-500',
+    todo: 'border-l-4 border-l-blue-500',
+    link: 'border-l-4 border-l-emerald-500',
+    file: 'border-l-4 border-l-amber-500',
+    text: 'border-l-4 border-l-gray-400 dark:border-l-gray-500',
   }[item.type];
 
   return (
@@ -145,12 +145,12 @@ export function ItemCard({
       onDragEnd={onDragEnd}
       onDrop={(e) => onDrop(e, index)}
       className={cn(
-        'group relative bg-white dark:bg-surface-900 rounded-xl p-4 transition-all duration-200',
-        'border border-gray-200/90 dark:border-surface-700/90',
-        'hover:border-gray-300 dark:hover:border-surface-600',
-        'shadow-sm hover:shadow-md',
+        'group relative bg-white dark:bg-surface-900 rounded-xl p-4 transition-all duration-150',
+        'border border-gray-300 dark:border-surface-600',
+        'hover:border-gray-400 dark:hover:border-surface-500',
+        'shadow-[0_1px_3px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)] hover:shadow-md',
         typeAccentBorder,
-        item.is_completed && 'opacity-60 bg-gray-50/80 dark:bg-surface-950/40 border-l-gray-300 dark:border-l-gray-700',
+        item.is_completed && 'opacity-60 bg-gray-50/90 dark:bg-surface-950/50 border-l-gray-300 dark:border-l-gray-700',
         isExpired && 'opacity-50',
         isDragging && 'opacity-30 scale-[0.98] border-dashed border-gray-400 dark:border-gray-500',
         isDragOver && 'ring-2 ring-blue-500/80 bg-blue-50/30 dark:bg-blue-950/20'
@@ -158,7 +158,7 @@ export function ItemCard({
     >
       {/* Quick Actions */}
       {!isEditing && (
-        <div className="absolute top-2.5 right-2.5 flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity duration-150 z-10 bg-white/95 dark:bg-surface-900/95 backdrop-blur-sm p-1 rounded-lg border border-gray-200/80 dark:border-surface-700 shadow-xs">
+        <div className="absolute top-2.5 right-2.5 flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity duration-150 z-10 bg-white/95 dark:bg-surface-900/95 backdrop-blur-sm p-1 rounded-lg border border-gray-200 dark:border-surface-700 shadow-sm">
           {/* Edit Button */}
           <button
             type="button"

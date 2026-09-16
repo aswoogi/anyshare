@@ -140,7 +140,7 @@ export function FeedList({
   }
 
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-3.5">
       {displayItems.map((item, index) => (
         <ItemCard
           key={item.id}

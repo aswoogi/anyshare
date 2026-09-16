@@ -289,7 +289,7 @@ export function QuickInputBar({
       className={`relative w-full rounded-2xl transition-all duration-200 ${
         isDragging
           ? 'ring-2 ring-blue-500 bg-blue-50/50 dark:bg-blue-950/20'
-          : 'bg-white dark:bg-surface-900 border border-gray-200/90 dark:border-surface-700/90 shadow-sm hover:shadow-md'
+          : 'bg-white dark:bg-surface-900 border border-gray-300 dark:border-surface-600 shadow-[0_1px_3px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)] hover:shadow-md'
       }`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
