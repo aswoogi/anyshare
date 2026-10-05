@@ -88,17 +88,57 @@ export function ItemCard({
   const handleDownloadFile = async () => {
     if (!item.metadata?.file?.storagePath) return;
     setDownloading(true);
+    const originalFileName = item.metadata?.file?.name || item.title || 'download';
+
     try {
+      // 1. Request signed URL with original filename for Content-Disposition header
       const { data, error } = await supabase.storage
         .from('files')
-        .createSignedUrl(item.metadata.file.storagePath, 60);
+        .createSignedUrl(item.metadata.file.storagePath, 60, {
+          download: originalFileName,
+        });
 
-      if (error) throw error;
-      if (data?.signedUrl) window.open(data.signedUrl, '_blank');
-    } catch {
-      if (item.metadata?.file?.downloadUrl) {
-        window.open(item.metadata.file.downloadUrl, '_blank');
+      if (!error && data?.signedUrl) {
+        // Trigger download with correct filename
+        const link = document.createElement('a');
+        link.href = data.signedUrl;
+        link.download = originalFileName;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return;
       }
+
+      // 2. Fallback: Direct storage download as Blob to force exact filename
+      const { data: blobData, error: downloadError } = await supabase.storage
+        .from('files')
+        .download(item.metadata.file.storagePath);
+
+      if (!downloadError && blobData) {
+        const blobUrl = URL.createObjectURL(blobData);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = originalFileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+        return;
+      }
+
+      // 3. Fallback to public URL
+      if (item.metadata?.file?.downloadUrl) {
+        const link = document.createElement('a');
+        link.href = item.metadata.file.downloadUrl;
+        link.download = originalFileName;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    } catch (err) {
+      console.error('Download failed:', err);
     } finally {
       setDownloading(false);
     }
