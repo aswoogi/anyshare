@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createShareToken, verifyShareToken } from '@/lib/shareToken';
 import { createClient } from '@supabase/supabase-js';
 
+export const runtime = 'edge';
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -21,7 +23,7 @@ export async function POST(req: NextRequest) {
     }
 
     const durationMinutes = 10;
-    const { token, exp } = createShareToken(title || '공유된 파일', files, durationMinutes);
+    const { token, exp } = await createShareToken(title || '공유된 파일', files, durationMinutes);
 
     return NextResponse.json({
       token,
@@ -47,7 +49,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: '토큰이 제공되지 않았습니다.' }, { status: 400 });
     }
 
-    const result = verifyShareToken(token);
+    const result = await verifyShareToken(token);
 
     if (!result.valid) {
       if (result.error === 'EXPIRED') {
