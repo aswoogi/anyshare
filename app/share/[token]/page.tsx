@@ -13,9 +13,12 @@ import {
   Loader2, 
   ShieldCheck, 
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  ImageIcon,
+  Maximize2
 } from 'lucide-react';
-import { formatBytes } from '@/lib/utils';
+import { formatBytes, isImageFile } from '@/lib/utils';
+import { ImageLightboxModal, LightboxImage } from '@/components/ImageLightboxModal';
 
 interface SharedFile {
   name: string;
@@ -45,6 +48,10 @@ export default function ShareDownloadPage() {
   const [remainingSec, setRemainingSec] = useState<number>(0);
   const [downloadingPath, setDownloadingPath] = useState<string | null>(null);
   const [downloadingAll, setDownloadingAll] = useState(false);
+
+  // Lightbox State
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
 
   // Fetch verified data from API
   useEffect(() => {
@@ -160,6 +167,20 @@ export default function ShareDownloadPage() {
   };
 
   const totalBytes = shareData?.files?.reduce((acc, f) => acc + (f.size || 0), 0) || 0;
+  const imageFiles = (shareData?.files || []).filter((f) => isImageFile(f.name));
+  const lightboxImages: LightboxImage[] = imageFiles.map((f) => ({
+    name: f.name,
+    url: f.downloadUrl || '',
+    storagePath: f.storagePath,
+  }));
+
+  const openLightbox = (file: SharedFile) => {
+    const idx = imageFiles.findIndex((img) => img.storagePath === file.storagePath);
+    if (idx !== -1) {
+      setLightboxIndex(idx);
+      setLightboxOpen(true);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-surface-950 text-gray-900 dark:text-gray-100 flex flex-col justify-between py-12 px-4 sm:px-6">
@@ -241,42 +262,123 @@ export default function ShareDownloadPage() {
               </p>
             </div>
 
-            {/* File List */}
-            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-              {shareData.files.map((file, idx) => (
-                <div
-                  key={`${file.storagePath}-${idx}`}
-                  className="flex items-center justify-between gap-3 p-3 bg-gray-50 dark:bg-surface-800 rounded-xl border border-gray-200/60 dark:border-surface-700 text-xs hover:border-amber-300 dark:hover:border-amber-700/60 transition"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="p-2 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 rounded-lg shrink-0">
-                      <FileIcon className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-semibold text-gray-800 dark:text-gray-200 truncate" title={file.name}>
-                        {file.name}
-                      </p>
-                      <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
-                        {formatBytes(file.size)}
-                      </p>
+            {/* Image Preview Box (If image exists) */}
+            {imageFiles.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-[11px] text-gray-500 font-medium">
+                  <span className="flex items-center gap-1">
+                    <ImageIcon className="w-3.5 h-3.5 text-blue-500" />
+                    <span>이미지 미리보기 ({imageFiles.length}장)</span>
+                  </span>
+                  <span className="text-gray-400">클릭하여 원본 확대</span>
+                </div>
+
+                {shareData.files.length === 1 ? (
+                  // Single Image Large Preview
+                  <div
+                    onClick={() => openLightbox(imageFiles[0])}
+                    className="relative group rounded-xl overflow-hidden border border-gray-200 dark:border-surface-700 bg-gray-100 dark:bg-surface-800 cursor-pointer max-h-56 flex items-center justify-center transition-all hover:border-blue-400 hover:shadow-md"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={imageFiles[0].downloadUrl || ''}
+                      alt={imageFiles[0].name}
+                      className="w-full h-auto max-h-56 object-contain rounded-xl"
+                      loading="lazy"
+                    />
+                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-white text-xs font-semibold backdrop-blur-[1px]">
+                      <Maximize2 className="w-4 h-4" />
+                      <span>크게 보기</span>
                     </div>
                   </div>
+                ) : (
+                  // Multi Image Grid Preview
+                  <div className="grid grid-cols-3 gap-2">
+                    {imageFiles.slice(0, 3).map((img, idx) => (
+                      <div
+                        key={img.storagePath}
+                        onClick={() => openLightbox(img)}
+                        className="relative group aspect-square rounded-xl overflow-hidden border border-gray-200 dark:border-surface-700 bg-gray-100 dark:bg-surface-800 cursor-pointer hover:border-blue-400 transition hover:shadow-sm"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={img.downloadUrl || ''}
+                          alt={img.name}
+                          className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                          loading="lazy"
+                        />
+                        {idx === 2 && imageFiles.length > 3 && (
+                          <div className="absolute inset-0 bg-black/60 text-white font-bold text-sm flex items-center justify-center backdrop-blur-xs">
+                            +{imageFiles.length - 3}
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                          <Maximize2 className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
-                  <button
-                    type="button"
-                    onClick={() => handleDownloadFile(file)}
-                    disabled={downloadingPath === file.storagePath || !file.downloadUrl || remainingSec <= 0}
-                    className="px-3 py-1.5 bg-white dark:bg-surface-700 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg border border-gray-300 dark:border-surface-600 shadow-xs transition flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+            {/* File List */}
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {shareData.files.map((file, idx) => {
+                const isImg = isImageFile(file.name);
+                return (
+                  <div
+                    key={`${file.storagePath}-${idx}`}
+                    className="flex items-center justify-between gap-3 p-3 bg-gray-50 dark:bg-surface-800 rounded-xl border border-gray-200/60 dark:border-surface-700 text-xs hover:border-amber-300 dark:hover:border-amber-700/60 transition"
                   >
-                    {downloadingPath === file.storagePath ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
-                    ) : (
-                      <Download className="w-3.5 h-3.5" />
-                    )}
-                    <span>다운로드</span>
-                  </button>
-                </div>
-              ))}
+                    <div 
+                      className="flex items-center gap-2.5 min-w-0 cursor-pointer"
+                      onClick={() => isImg && openLightbox(file)}
+                    >
+                      {isImg && file.downloadUrl ? (
+                        <div className="relative w-9 h-9 rounded-lg overflow-hidden bg-gray-100 dark:bg-surface-700 border border-gray-200 dark:border-surface-600 shrink-0 group">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={file.downloadUrl}
+                            alt={file.name}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                          <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                            <Maximize2 className="w-3 h-3" />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-2 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 rounded-lg shrink-0">
+                          <FileIcon className="w-4 h-4" />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-800 dark:text-gray-200 truncate" title={file.name}>
+                          {file.name}
+                        </p>
+                        <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+                          {formatBytes(file.size)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadFile(file)}
+                      disabled={downloadingPath === file.storagePath || !file.downloadUrl || remainingSec <= 0}
+                      className="px-3 py-1.5 bg-white dark:bg-surface-700 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg border border-gray-300 dark:border-surface-600 shadow-xs transition flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+                    >
+                      {downloadingPath === file.storagePath ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5" />
+                      )}
+                      <span>다운로드</span>
+                    </button>
+                  </div>
+                );
+              })}
             </div>
 
             {/* Action Buttons: Download All */}
@@ -304,6 +406,24 @@ export default function ShareDownloadPage() {
           </div>
         )}
       </div>
+
+      {/* Lightbox Modal for Shared Images */}
+      {lightboxImages.length > 0 && (
+        <ImageLightboxModal
+          isOpen={lightboxOpen}
+          images={lightboxImages}
+          initialIndex={lightboxIndex}
+          onClose={() => setLightboxOpen(false)}
+          onDownload={(img) => {
+            const target = shareData?.files.find(
+              (f) => f.name === img.name || f.storagePath === img.storagePath
+            );
+            if (target) {
+              handleDownloadFile(target);
+            }
+          }}
+        />
+      )}
 
       {/* Footer */}
       <footer className="text-center text-xs text-gray-400 mt-8">

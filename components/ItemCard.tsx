@@ -20,11 +20,14 @@ import {
   GripVertical,
   Loader2,
   Link2,
-  Share2
+  Share2,
+  ImageIcon,
+  Maximize2
 } from 'lucide-react';
 import { Item, UpdateItemInput, FileMetadata } from '@/types/item';
-import { cn, formatBytes, formatRemindTime, getRemainingTimeText } from '@/lib/utils';
+import { cn, formatBytes, formatRemindTime, getRemainingTimeText, isImageFile } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
+import { ImageLightboxModal, LightboxImage } from '@/components/ImageLightboxModal';
 
 interface ItemCardProps {
   item: Item;
@@ -60,8 +63,16 @@ export function ItemCard({
   const [downloadingPath, setDownloadingPath] = useState<string | null>(null);
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(item.title || '');
+  const [editContent, setEditContent] = useState(item.content || '');
+  const [editRemindAt, setEditRemindAt] = useState<string | null>(item.remind_at || null);
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [sharing, setSharing] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+
+  const supabase = createClient();
 
   // Extract all files (multi or single fallback)
   const filesList: FileMetadata[] = 
@@ -72,13 +83,24 @@ export function ItemCard({
         : [];
   const allStoragePaths = filesList.map((f) => f.storagePath).filter(Boolean);
 
-  // Edit form state
-  const [editTitle, setEditTitle] = useState(item.title || '');
-  const [editContent, setEditContent] = useState(item.content || '');
-  const [editRemindAt, setEditRemindAt] = useState<string | null>(item.remind_at || null);
-  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const getFileUrl = (file: FileMetadata): string => {
+    if (file.downloadUrl) return file.downloadUrl;
+    const { data } = supabase.storage.from('files').getPublicUrl(file.storagePath);
+    return data?.publicUrl || '';
+  };
 
-  const supabase = createClient();
+  const imageFiles = filesList.filter((f) => isImageFile(f.name, f.mimeType));
+  const lightboxImages: LightboxImage[] = imageFiles.map((f) => ({
+    url: getFileUrl(f),
+    name: f.name,
+    storagePath: f.storagePath,
+  }));
+
+  const openLightboxByFile = (file: FileMetadata) => {
+    const idx = imageFiles.findIndex((f) => f.storagePath === file.storagePath);
+    setLightboxIndex(idx >= 0 ? idx : 0);
+    setLightboxOpen(true);
+  };
 
   useEffect(() => {
     setEditTitle(item.title || '');
@@ -589,7 +611,7 @@ export function ItemCard({
                           </span>
                         </div>
 
-                        {/* 버튼 그룹 (모바일에서 전폭/가로 균등 분할로 터치 및 가시성 극대화) */}
+                        {/* 버튼 그룹 */}
                         <div className="flex items-center gap-2 w-full sm:w-auto">
                           <button
                             type="button"
@@ -629,6 +651,45 @@ export function ItemCard({
                         </div>
                       </div>
 
+                      {/* 이미지 파일이 포함된 경우: 인라인 썸네일 그리드 프리뷰 */}
+                      {imageFiles.length > 0 && (
+                        <div
+                          className={cn(
+                            'grid gap-1.5 rounded-lg overflow-hidden',
+                            imageFiles.length === 1 && 'grid-cols-1',
+                            imageFiles.length === 2 && 'grid-cols-2',
+                            imageFiles.length >= 3 && 'grid-cols-3'
+                          )}
+                        >
+                          {imageFiles.slice(0, 3).map((imgFile, idx) => (
+                            <div
+                              key={`${imgFile.storagePath}-${idx}`}
+                              onClick={() => openLightboxByFile(imgFile)}
+                              className="group/thumb relative aspect-video sm:aspect-[4/3] bg-gray-100 dark:bg-surface-800 overflow-hidden cursor-pointer rounded-lg border border-amber-200/50 dark:border-amber-900/40"
+                              title={`${imgFile.name} (클릭하여 크게 보기)`}
+                            >
+                              <img
+                                src={getFileUrl(imgFile)}
+                                alt={imgFile.name}
+                                className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform duration-200"
+                                loading="lazy"
+                                onError={(e) => {
+                                  (e.target as HTMLElement).style.display = 'none';
+                                }}
+                              />
+                              <div className="absolute inset-0 bg-black/0 group-hover/thumb:bg-black/25 transition-colors flex items-center justify-center opacity-0 group-hover/thumb:opacity-100">
+                                <Maximize2 className="w-4 h-4 text-white drop-shadow-md" />
+                              </div>
+                              {idx === 2 && imageFiles.length > 3 && (
+                                <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white text-xs font-bold font-mono">
+                                  +{imageFiles.length - 2}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       {/* 개별 파일 목록 */}
                       <div className="space-y-1.5 max-h-60 overflow-y-auto pr-0.5">
                         {filesList.map((file, fIdx) => (
@@ -636,12 +697,32 @@ export function ItemCard({
                             key={`${file.storagePath}-${fIdx}`}
                             className="flex items-center justify-between gap-2 p-2 px-2.5 bg-white/95 dark:bg-surface-800/95 rounded-lg border border-amber-200/40 dark:border-amber-900/20 text-xs hover:border-amber-300 dark:hover:border-amber-800/50 transition"
                           >
-                            <div className="flex items-center gap-2 min-w-0 flex-1 mr-1">
-                              <FileIcon className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                              <span className="truncate font-medium text-gray-800 dark:text-gray-200" title={file.name}>
+                            <div
+                              className="flex items-center gap-2 min-w-0 flex-1 mr-1 cursor-pointer"
+                              onClick={() => {
+                                if (isImageFile(file.name, file.mimeType)) {
+                                  openLightboxByFile(file);
+                                }
+                              }}
+                            >
+                              {isImageFile(file.name, file.mimeType) ? (
+                                <div className="w-7 h-7 rounded-md overflow-hidden bg-amber-100 shrink-0 border border-amber-200/60">
+                                  <img
+                                    src={getFileUrl(file)}
+                                    alt=""
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      (e.target as HTMLElement).style.display = 'none';
+                                    }}
+                                  />
+                                </div>
+                              ) : (
+                                <FileIcon className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                              )}
+                              <span className="truncate font-medium text-gray-800 dark:text-gray-200 hover:text-amber-700 dark:hover:text-amber-300 transition" title={file.name}>
                                 {file.name}
                               </span>
-                              <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">
+                              <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0 font-mono">
                                 ({formatBytes(file.size)})
                               </span>
                             </div>
@@ -675,66 +756,147 @@ export function ItemCard({
                       </div>
                     </div>
                   ) : (
-                    /* 단일 파일 카드 UI (모바일에서 버튼이 파일명을 가리지 않도록 2열 반응형 개선) */
-                    <div className="bg-amber-50/50 dark:bg-amber-950/20 p-3 sm:p-3.5 rounded-xl border border-amber-200/50 dark:border-amber-900/30 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      {/* 파일 정보 영역 (모바일에서도 100% 가로 너비 확보하여 긴 파일명도 시원하게 표시) */}
-                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                        <div className="p-2 bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 rounded-lg shrink-0 mt-0.5">
-                          <FileIcon className="w-5 h-5" />
+                    /* 단일 파일 카드 UI */
+                    filesList[0] && isImageFile(filesList[0].name, filesList[0].mimeType) ? (
+                      /* 단일 이미지 전용 카드 (대형 썸네일 미리보기 + 라이트박스) */
+                      <div className="space-y-2">
+                        <div
+                          onClick={() => openLightboxByFile(filesList[0])}
+                          className="group/img relative rounded-xl overflow-hidden border border-amber-200/60 dark:border-amber-900/40 bg-gray-100 dark:bg-surface-800 cursor-pointer max-h-72 sm:max-h-80 flex items-center justify-center shadow-xs hover:border-amber-400 dark:hover:border-amber-600 transition"
+                          title="클릭하여 크게 보기 (라이트박스)"
+                        >
+                          <img
+                            src={getFileUrl(filesList[0])}
+                            alt={filesList[0].name}
+                            className="w-full h-auto max-h-72 sm:max-h-80 object-cover object-top group-hover/img:scale-[1.015] transition-transform duration-300"
+                            loading="lazy"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = 'none';
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/25 transition-colors flex items-center justify-center opacity-0 group-hover/img:opacity-100">
+                            <div className="px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-md text-white text-xs font-medium flex items-center gap-1.5 shadow-lg">
+                              <Maximize2 className="w-3.5 h-3.5" />
+                              <span>크게 보기</span>
+                            </div>
+                          </div>
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 break-all sm:truncate leading-snug" title={filesList[0]?.name || item.title || ''}>
-                            {filesList[0]?.name || item.title || item.metadata?.file?.name}
-                          </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-mono">
-                            {filesList[0]?.size
-                              ? formatBytes(filesList[0].size)
-                              : item.metadata?.file?.size
-                                ? formatBytes(item.metadata.file.size)
-                                : '파일'}
-                          </p>
+
+                        {/* 하단 정보 바 및 버튼 */}
+                        <div className="bg-amber-50/50 dark:bg-amber-950/20 p-2.5 sm:p-3 rounded-xl border border-amber-200/50 dark:border-amber-900/30 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <div className="p-1.5 bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 rounded-md shrink-0">
+                              <ImageIcon className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-gray-100 truncate" title={filesList[0]?.name}>
+                                {filesList[0]?.name}
+                              </p>
+                              <p className="text-[10px] text-gray-500 dark:text-gray-400 font-mono">
+                                {formatBytes(filesList[0]?.size || 0)}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                            <button
+                              type="button"
+                              onClick={handleGenerateShareLink}
+                              disabled={sharing}
+                              className={cn(
+                                "flex-1 sm:flex-none px-3 py-1.5 text-xs font-semibold rounded-lg border shadow-xs transition flex items-center justify-center gap-1.5 disabled:opacity-50",
+                                shareCopied
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                                  : "bg-white dark:bg-surface-800 text-amber-900 dark:text-amber-200 hover:bg-amber-100/70 dark:hover:bg-amber-950/40 border-amber-300/70 dark:border-amber-800/60"
+                              )}
+                              title="누구나 10분간 다운로드 가능한 안전 공유 링크 복사"
+                            >
+                              {sharing ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                              ) : shareCopied ? (
+                                <CheckCheck className="w-3.5 h-3.5 text-emerald-500" />
+                              ) : (
+                                <Link2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                              )}
+                              <span>{shareCopied ? '링크 복사됨!' : '10분 공유 링크'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => filesList[0] && downloadTargetFile(filesList[0])}
+                              disabled={downloadingPath === filesList[0]?.storagePath || isExpired}
+                              className="flex-1 sm:flex-none px-3.5 py-1.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-semibold rounded-lg hover:opacity-90 shadow-xs transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+                            >
+                              {downloadingPath === filesList[0]?.storagePath ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-white dark:text-gray-900" />
+                              ) : (
+                                <Download className="w-3.5 h-3.5" />
+                              )}
+                              <span>{downloadingPath === filesList[0]?.storagePath ? '준비중...' : '다운로드'}</span>
+                            </button>
+                          </div>
                         </div>
                       </div>
+                    ) : (
+                      /* 단일 일반 파일 카드 UI (비이미지 파일) */
+                      <div className="bg-amber-50/50 dark:bg-amber-950/20 p-3 sm:p-3.5 rounded-xl border border-amber-200/50 dark:border-amber-900/30 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                          <div className="p-2 bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 rounded-lg shrink-0 mt-0.5">
+                            <FileIcon className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 break-all sm:truncate leading-snug" title={filesList[0]?.name || item.title || ''}>
+                              {filesList[0]?.name || item.title || item.metadata?.file?.name}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-mono">
+                              {filesList[0]?.size
+                                ? formatBytes(filesList[0].size)
+                                : item.metadata?.file?.size
+                                  ? formatBytes(item.metadata.file.size)
+                                  : '파일'}
+                            </p>
+                          </div>
+                        </div>
 
-                      {/* 버튼 그룹 (모바일에서는 파일 정보 아래에 시원하게 배치되어 파일명을 절대 가리지 않음) */}
-                      <div className="flex items-center gap-2 shrink-0 pt-2.5 sm:pt-0 border-t border-amber-200/50 dark:border-amber-900/30 sm:border-t-0 w-full sm:w-auto">
-                        <button
-                          type="button"
-                          onClick={handleGenerateShareLink}
-                          disabled={sharing}
-                          className={cn(
-                            "flex-1 sm:flex-none px-3 py-1.5 text-xs font-semibold rounded-lg border shadow-xs transition flex items-center justify-center gap-1.5 disabled:opacity-50",
-                            shareCopied
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
-                              : "bg-white dark:bg-surface-800 text-amber-900 dark:text-amber-200 hover:bg-amber-100/70 dark:hover:bg-amber-950/40 border-amber-300/70 dark:border-amber-800/60"
-                          )}
-                          title="누구나 10분간 다운로드 가능한 안전 공유 링크 복사"
-                        >
-                          {sharing ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
-                          ) : shareCopied ? (
-                            <CheckCheck className="w-3.5 h-3.5 text-emerald-500" />
-                          ) : (
-                            <Link2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                          )}
-                          <span>{shareCopied ? '링크 복사됨!' : '10분 공유 링크'}</span>
-                        </button>
+                        <div className="flex items-center gap-2 shrink-0 pt-2.5 sm:pt-0 border-t border-amber-200/50 dark:border-amber-900/30 sm:border-t-0 w-full sm:w-auto">
+                          <button
+                            type="button"
+                            onClick={handleGenerateShareLink}
+                            disabled={sharing}
+                            className={cn(
+                              "flex-1 sm:flex-none px-3 py-1.5 text-xs font-semibold rounded-lg border shadow-xs transition flex items-center justify-center gap-1.5 disabled:opacity-50",
+                              shareCopied
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                                : "bg-white dark:bg-surface-800 text-amber-900 dark:text-amber-200 hover:bg-amber-100/70 dark:hover:bg-amber-950/40 border-amber-300/70 dark:border-amber-800/60"
+                            )}
+                            title="누구나 10분간 다운로드 가능한 안전 공유 링크 복사"
+                          >
+                            {sharing ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                            ) : shareCopied ? (
+                              <CheckCheck className="w-3.5 h-3.5 text-emerald-500" />
+                            ) : (
+                              <Link2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                            )}
+                            <span>{shareCopied ? '링크 복사됨!' : '10분 공유 링크'}</span>
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => filesList[0] && downloadTargetFile(filesList[0])}
-                          disabled={downloadingPath === filesList[0]?.storagePath || isExpired}
-                          className="flex-1 sm:flex-none px-3.5 py-1.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-semibold rounded-lg hover:opacity-90 shadow-xs transition flex items-center justify-center gap-1.5 disabled:opacity-50"
-                        >
-                          {downloadingPath === filesList[0]?.storagePath ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-white dark:text-gray-900" />
-                          ) : (
-                            <Download className="w-3.5 h-3.5" />
-                          )}
-                          <span>{downloadingPath === filesList[0]?.storagePath ? '준비중...' : '다운로드'}</span>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => filesList[0] && downloadTargetFile(filesList[0])}
+                            disabled={downloadingPath === filesList[0]?.storagePath || isExpired}
+                            className="flex-1 sm:flex-none px-3.5 py-1.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-semibold rounded-lg hover:opacity-90 shadow-xs transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+                          >
+                            {downloadingPath === filesList[0]?.storagePath ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-white dark:text-gray-900" />
+                            ) : (
+                              <Download className="w-3.5 h-3.5" />
+                            )}
+                            <span>{downloadingPath === filesList[0]?.storagePath ? '준비중...' : '다운로드'}</span>
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    )
                   )}
                 </div>
               )}
@@ -799,6 +961,24 @@ export function ItemCard({
           )}
         </div>
       </div>
+
+      {/* Image Lightbox Modal */}
+      {lightboxImages.length > 0 && (
+        <ImageLightboxModal
+          isOpen={lightboxOpen}
+          images={lightboxImages}
+          initialIndex={lightboxIndex}
+          onClose={() => setLightboxOpen(false)}
+          onDownload={(img) => {
+            const target = filesList.find(
+              (f) => f.name === img.name || (f.storagePath && f.storagePath === img.storagePath)
+            );
+            if (target) {
+              downloadTargetFile(target);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

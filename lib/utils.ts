@@ -51,3 +51,9 @@ export function formatRemindTime(dateString: string | null): string {
   }
   return `${date.getMonth() + 1}/${date.getDate()} ${timeStr}`;
 }
+
+export function isImageFile(fileName?: string | null, mimeType?: string | null): boolean {
+  if (mimeType && mimeType.startsWith('image/')) return true;
+  if (!fileName) return false;
+  return /\.(jpe?g|png|gif|webp|svg|bmp|ico|heic)$/i.test(fileName);
+}
