@@ -18,7 +18,9 @@ import {
   Calendar,
   X,
   GripVertical,
-  Loader2
+  Loader2,
+  Link2,
+  Share2
 } from 'lucide-react';
 import { Item, UpdateItemInput, FileMetadata } from '@/types/item';
 import { cn, formatBytes, formatRemindTime, getRemainingTimeText } from '@/lib/utils';
@@ -58,6 +60,8 @@ export function ItemCard({
   const [downloadingPath, setDownloadingPath] = useState<string | null>(null);
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   // Extract all files (multi or single fallback)
   const filesList: FileMetadata[] = 
@@ -171,6 +175,41 @@ export function ItemCard({
     }
   };
 
+  const handleGenerateShareLink = async () => {
+    if (filesList.length === 0 || sharing) return;
+    setSharing(true);
+    try {
+      const res = await fetch('/api/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: item.title || (filesList[0]?.name ? `${filesList[0].name}` : '공유된 파일'),
+          files: filesList.map((f) => ({
+            name: f.name,
+            size: f.size,
+            storagePath: f.storagePath,
+          })),
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to generate share link');
+      }
+
+      const data = await res.json();
+      const shareUrl = `${window.location.origin}/share/${data.token}`;
+      await navigator.clipboard.writeText(shareUrl);
+
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 3000);
+    } catch (err) {
+      console.error('Share link generation failed:', err);
+      alert('공유 링크 생성 중 오류가 발생했습니다.');
+    } finally {
+      setSharing(false);
+    }
+  };
+
   const handleSaveEdit = () => {
     const trimmedContent = editContent.trim();
     if (!trimmedContent && !editTitle.trim()) {
@@ -244,6 +283,29 @@ export function ItemCard({
           >
             {copied ? <CheckCheck className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
           </button>
+          {/* 10-Minute Share Link Button (File type only) */}
+          {item.type === 'file' && (
+            <button
+              type="button"
+              onClick={handleGenerateShareLink}
+              disabled={sharing}
+              title="10분 공유 링크 생성 및 복사"
+              className={cn(
+                "p-1 rounded-md transition flex items-center",
+                shareCopied 
+                  ? "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40" 
+                  : "text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+              )}
+            >
+              {sharing ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-500" />
+              ) : shareCopied ? (
+                <CheckCheck className="w-3.5 h-3.5 text-emerald-500" />
+              ) : (
+                <Link2 className="w-3.5 h-3.5" />
+              )}
+            </button>
+          )}
           {/* Archive Toggle Button */}
           <button
             type="button"
@@ -464,6 +526,19 @@ export function ItemCard({
               {/* 3. FILE CARD */}
               {item.type === 'file' && (
                 <div className="space-y-2">
+                  {/* 10분 공유 링크 복사 완료 피드백 알림 배너 */}
+                  {shareCopied && (
+                    <div className="p-2 px-3 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-lg text-xs text-emerald-800 dark:text-emerald-200 flex items-center justify-between animate-fade-in font-medium">
+                      <div className="flex items-center gap-1.5">
+                        <CheckCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>⏱️ 10분 유효 공유 링크가 복사되었습니다!</span>
+                      </div>
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">
+                        10분 후 자동 만료
+                      </span>
+                    </div>
+                  )}
+
                   {/* 사용자가 작성한 별도 메모/제목이 있을 때 표시 */}
                   {item.title && filesList.length > 0 && !filesList.some((f) => f.name === item.title) && (
                     <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-snug">
@@ -474,7 +549,7 @@ export function ItemCard({
                   {filesList.length > 1 ? (
                     /* 다중 파일 카드 UI */
                     <div className="bg-amber-50/50 dark:bg-amber-950/20 p-3 rounded-xl border border-amber-200/50 dark:border-amber-900/30 space-y-2.5">
-                      {/* 헤더: 파일 개수, 총 용량, 전체 다운로드 버튼 */}
+                      {/* 헤더: 파일 개수, 총 용량, 공유 링크 버튼, 전체 다운로드 버튼 */}
                       <div className="flex items-center justify-between gap-2 pb-2 border-b border-amber-200/60 dark:border-amber-900/40 text-xs">
                         <div className="flex items-center gap-1.5 font-medium text-amber-900 dark:text-amber-200">
                           <FileIcon className="w-4 h-4 text-amber-600 dark:text-amber-400" />
@@ -483,19 +558,42 @@ export function ItemCard({
                             ({formatBytes(filesList.reduce((acc, f) => acc + (f.size || 0), 0))})
                           </span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={handleDownloadAll}
-                          disabled={downloadingAll || isExpired}
-                          className="px-2.5 py-1 bg-white dark:bg-surface-800 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-amber-100/60 dark:hover:bg-surface-700 rounded-lg border border-amber-200/80 dark:border-surface-700 shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 shrink-0"
-                        >
-                          {downloadingAll ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
-                          ) : (
-                            <Download className="w-3.5 h-3.5" />
-                          )}
-                          <span>{downloadingAll ? '다운로드 중...' : '전체 다운로드'}</span>
-                        </button>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={handleGenerateShareLink}
+                            disabled={sharing}
+                            className={cn(
+                              "px-2.5 py-1 text-xs font-medium rounded-lg border shadow-xs transition flex items-center gap-1 shrink-0",
+                              shareCopied
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                                : "bg-white dark:bg-surface-800 text-gray-700 dark:text-gray-200 hover:bg-amber-100/60 dark:hover:bg-surface-700 border-amber-200/80 dark:border-surface-700"
+                            )}
+                            title="다른 사람에게 보낼 10분 공유 링크 복사"
+                          >
+                            {sharing ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                            ) : shareCopied ? (
+                              <CheckCheck className="w-3.5 h-3.5 text-emerald-500" />
+                            ) : (
+                              <Link2 className="w-3.5 h-3.5 text-amber-600" />
+                            )}
+                            <span>{shareCopied ? '복사됨!' : '공유 링크'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleDownloadAll}
+                            disabled={downloadingAll || isExpired}
+                            className="px-2.5 py-1 bg-white dark:bg-surface-800 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-amber-100/60 dark:hover:bg-surface-700 rounded-lg border border-amber-200/80 dark:border-surface-700 shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 shrink-0"
+                          >
+                            {downloadingAll ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                            ) : (
+                              <Download className="w-3.5 h-3.5" />
+                            )}
+                            <span>{downloadingAll ? '다운로드 중...' : '전체 다운로드'}</span>
+                          </button>
+                        </div>
                       </div>
 
                       {/* 개별 파일 목록 */}
@@ -553,19 +651,42 @@ export function ItemCard({
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => filesList[0] && downloadTargetFile(filesList[0])}
-                        disabled={downloadingPath === filesList[0]?.storagePath || isExpired}
-                        className="px-3 py-1.5 bg-white dark:bg-surface-800 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-amber-50 rounded-lg border border-black/[0.06] shadow-sm transition shrink-0 flex items-center gap-1 disabled:opacity-50"
-                      >
-                        {downloadingPath === filesList[0]?.storagePath ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Download className="w-3.5 h-3.5" />
-                        )}
-                        <span>{downloadingPath === filesList[0]?.storagePath ? '준비중...' : '다운로드'}</span>
-                      </button>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={handleGenerateShareLink}
+                          disabled={sharing}
+                          className={cn(
+                            "px-2.5 py-1.5 text-xs font-medium rounded-lg border shadow-xs transition flex items-center gap-1 disabled:opacity-50",
+                            shareCopied
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                              : "bg-white dark:bg-surface-800 text-gray-700 dark:text-gray-200 hover:bg-amber-50 rounded-lg border-black/[0.06] shadow-sm"
+                          )}
+                          title="10분 공유 링크 복사"
+                        >
+                          {sharing ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                          ) : shareCopied ? (
+                            <CheckCheck className="w-3.5 h-3.5 text-emerald-500" />
+                          ) : (
+                            <Link2 className="w-3.5 h-3.5 text-amber-600" />
+                          )}
+                          <span>{shareCopied ? '복사됨!' : '공유'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => filesList[0] && downloadTargetFile(filesList[0])}
+                          disabled={downloadingPath === filesList[0]?.storagePath || isExpired}
+                          className="px-3 py-1.5 bg-white dark:bg-surface-800 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-amber-50 rounded-lg border border-black/[0.06] shadow-sm transition shrink-0 flex items-center gap-1 disabled:opacity-50"
+                        >
+                          {downloadingPath === filesList[0]?.storagePath ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Download className="w-3.5 h-3.5" />
+                          )}
+                          <span>{downloadingPath === filesList[0]?.storagePath ? '준비중...' : '다운로드'}</span>
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
