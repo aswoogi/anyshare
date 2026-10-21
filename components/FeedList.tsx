@@ -12,7 +12,7 @@ interface FeedListProps {
   selectedCategory: CategoryFilterType;
   onToggleComplete: (id: string, current: boolean) => void;
   onToggleArchive: (id: string, current: boolean) => void;
-  onDelete: (id: string, storagePath?: string) => void;
+  onDelete: (id: string, storagePath?: string | string[]) => void;
   onUpdate: (id: string, updates: UpdateItemInput) => void;
   onReorder: (reorderedList: Item[]) => void;
 }

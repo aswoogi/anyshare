@@ -379,7 +379,7 @@ export function useItemsRealtime(userId?: string) {
 
   // Delete item
   const deleteItem = useCallback(
-    async (id: string, storagePath?: string) => {
+    async (id: string, storagePath?: string | string[]) => {
       if (!currentUser) return;
 
       const backup = items.find((i) => i.id === id);
@@ -387,7 +387,10 @@ export function useItemsRealtime(userId?: string) {
 
       if (storagePath) {
         try {
-          await supabase.storage.from('files').remove([storagePath]);
+          const paths = Array.isArray(storagePath) ? storagePath : [storagePath];
+          if (paths.length > 0) {
+            await supabase.storage.from('files').remove(paths);
+          }
         } catch (storageErr) {
           console.warn('Storage cleanup warning:', storageErr);
         }

@@ -37,6 +37,9 @@ export function StorageUsageModal({
   // Compute storage usage from files
   const fileItems = items.filter((it) => it.type === 'file');
   const totalStorageBytes = fileItems.reduce((acc, it) => {
+    if (it.metadata?.files && Array.isArray(it.metadata.files)) {
+      return acc + it.metadata.files.reduce((sub: number, f: any) => sub + Number(f.size || 0), 0);
+    }
     const sz = it.metadata?.file?.size || 0;
     return acc + Number(sz);
   }, 0);

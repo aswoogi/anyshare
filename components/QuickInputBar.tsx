@@ -201,66 +201,43 @@ export function QuickInputBar({
     try {
       const rawText = content.trim();
 
-      // 1. 첨부된 파일들이 있는 경우: 모든 파일 순차 업로드 및 등록
+      // 1. 첨부된 파일들이 있는 경우: 파일들을 업로드하고 '단일 카드'로 묶어 등록
       if (attachedFiles.length > 0) {
         setUploadProgress({ current: 0, total: attachedFiles.length });
 
+        const uploadedFiles: any[] = [];
         for (let i = 0; i < attachedFiles.length; i++) {
           const file = attachedFiles[i];
           setUploadProgress({ current: i + 1, total: attachedFiles.length });
           const uploadResult = await uploadFile(file);
-          await onAddItem({
-            type: 'file',
-            title: file.name,
-            content: uploadResult.path,
-            metadata: {
-              file: {
-                name: file.name,
-                size: file.size,
-                mimeType: file.type,
-                storagePath: uploadResult.path,
-                downloadUrl: uploadResult.publicUrl,
-              },
-            },
-            remind_at: remindAt,
-            expires_at: expiresAt,
+          uploadedFiles.push({
+            name: file.name,
+            size: file.size,
+            mimeType: file.type,
+            storagePath: uploadResult.path,
+            downloadUrl: uploadResult.publicUrl,
           });
         }
         setUploadProgress(null);
 
-        // 파일과 함께 텍스트 메모를 함께 남긴 경우 메모 아이템도 생성
-        if (rawText) {
-          const textType = detectType(rawText, false);
-          if (textType === 'link') {
-            const og = await fetchOgMetadata(rawText);
-            await onAddItem({
-              type: 'link',
-              title: og?.title || rawText,
-              content: rawText,
-              metadata: { og: og || undefined },
-              remind_at: remindAt,
-              expires_at: expiresAt,
-            });
-          } else if (textType === 'todo') {
-            const cleanTitle = rawText.replace(/^\[\s*\]\s*/, '').replace(/^-\s*/, '');
-            await onAddItem({
-              type: 'todo',
-              title: cleanTitle,
-              content: rawText,
-              remind_at: remindAt,
-              expires_at: expiresAt,
-            });
-          } else {
-            const firstLine = rawText.split('\n')[0].substring(0, 50);
-            await onAddItem({
-              type: 'text',
-              title: firstLine,
-              content: rawText,
-              remind_at: remindAt,
-              expires_at: expiresAt,
-            });
-          }
-        }
+        // 카드 제목 설정: 사용자가 텍스트를 입력했으면 해당 텍스트를 제목으로, 없으면 파일명 요약
+        const cardTitle = rawText
+          ? rawText
+          : attachedFiles.length === 1
+            ? attachedFiles[0].name
+            : `${attachedFiles[0].name} 외 ${attachedFiles.length - 1}개`;
+
+        await onAddItem({
+          type: 'file',
+          title: cardTitle,
+          content: rawText || uploadedFiles[0].storagePath,
+          metadata: {
+            file: uploadedFiles[0],
+            files: uploadedFiles,
+          },
+          remind_at: remindAt,
+          expires_at: expiresAt,
+        });
       } else {
         // 2. 첨부 파일 없이 텍스트만 작성된 경우
         const currentType = detectType(rawText, false);

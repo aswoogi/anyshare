@@ -21,6 +21,7 @@ export interface FileMetadata {
 export interface ItemMetadata {
   og?: OgMetadata;
   file?: FileMetadata;
+  files?: FileMetadata[];
   sort_order?: number;
   [key: string]: any;
 }

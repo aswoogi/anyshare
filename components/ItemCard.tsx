@@ -17,9 +17,10 @@ import {
   Save,
   Calendar,
   X,
-  GripVertical
+  GripVertical,
+  Loader2
 } from 'lucide-react';
-import { Item, UpdateItemInput } from '@/types/item';
+import { Item, UpdateItemInput, FileMetadata } from '@/types/item';
 import { cn, formatBytes, formatRemindTime, getRemainingTimeText } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 
@@ -28,7 +29,7 @@ interface ItemCardProps {
   index: number;
   onToggleComplete: (id: string, current: boolean) => void;
   onToggleArchive: (id: string, current: boolean) => void;
-  onDelete: (id: string, storagePath?: string) => void;
+  onDelete: (id: string, storagePath?: string | string[]) => void;
   onUpdate: (id: string, updates: UpdateItemInput) => void;
   // Drag and Drop
   onDragStart: (e: React.DragEvent, index: number) => void;
@@ -54,8 +55,18 @@ export function ItemCard({
   isDragOver = false,
 }: ItemCardProps) {
   const [copied, setCopied] = useState(false);
-  const [downloading, setDownloading] = useState(false);
+  const [downloadingPath, setDownloadingPath] = useState<string | null>(null);
+  const [downloadingAll, setDownloadingAll] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+
+  // Extract all files (multi or single fallback)
+  const filesList: FileMetadata[] = 
+    item.metadata?.files && item.metadata.files.length > 0
+      ? item.metadata.files
+      : item.metadata?.file
+        ? [item.metadata.file]
+        : [];
+  const allStoragePaths = filesList.map((f) => f.storagePath).filter(Boolean);
 
   // Edit form state
   const [editTitle, setEditTitle] = useState(item.title || '');
@@ -85,16 +96,16 @@ export function ItemCard({
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const handleDownloadFile = async () => {
-    if (!item.metadata?.file?.storagePath) return;
-    setDownloading(true);
-    const originalFileName = item.metadata?.file?.name || item.title || 'download';
+  const downloadTargetFile = async (targetFile: FileMetadata) => {
+    if (!targetFile?.storagePath) return;
+    setDownloadingPath(targetFile.storagePath);
+    const originalFileName = targetFile.name || item.title || 'download';
 
     try {
       // 1. Request signed URL with original filename for Content-Disposition header
       const { data, error } = await supabase.storage
         .from('files')
-        .createSignedUrl(item.metadata.file.storagePath, 60, {
+        .createSignedUrl(targetFile.storagePath, 60, {
           download: originalFileName,
         });
 
@@ -113,7 +124,7 @@ export function ItemCard({
       // 2. Fallback: Direct storage download as Blob to force exact filename
       const { data: blobData, error: downloadError } = await supabase.storage
         .from('files')
-        .download(item.metadata.file.storagePath);
+        .download(targetFile.storagePath);
 
       if (!downloadError && blobData) {
         const blobUrl = URL.createObjectURL(blobData);
@@ -128,9 +139,9 @@ export function ItemCard({
       }
 
       // 3. Fallback to public URL
-      if (item.metadata?.file?.downloadUrl) {
+      if (targetFile.downloadUrl) {
         const link = document.createElement('a');
-        link.href = item.metadata.file.downloadUrl;
+        link.href = targetFile.downloadUrl;
         link.download = originalFileName;
         link.target = '_blank';
         document.body.appendChild(link);
@@ -140,7 +151,23 @@ export function ItemCard({
     } catch (err) {
       console.error('Download failed:', err);
     } finally {
-      setDownloading(false);
+      setDownloadingPath(null);
+    }
+  };
+
+  const handleDownloadAll = async () => {
+    if (filesList.length === 0 || downloadingAll) return;
+    setDownloadingAll(true);
+    try {
+      for (let i = 0; i < filesList.length; i++) {
+        await downloadTargetFile(filesList[i]);
+        if (i < filesList.length - 1) {
+          // Delay to prevent browser from blocking multiple simultaneous downloads
+          await new Promise((resolve) => setTimeout(resolve, 400));
+        }
+      }
+    } finally {
+      setDownloadingAll(false);
     }
   };
 
@@ -233,7 +260,7 @@ export function ItemCard({
           {/* Delete Button */}
           <button
             type="button"
-            onClick={() => onDelete(item.id, item.metadata?.file?.storagePath)}
+            onClick={() => onDelete(item.id, allStoragePaths.length > 0 ? allStoragePaths : item.metadata?.file?.storagePath)}
             title="삭제"
             className="p-1 text-gray-500 hover:text-red-600 dark:hover:text-red-400 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30 transition"
           >
@@ -436,30 +463,111 @@ export function ItemCard({
 
               {/* 3. FILE CARD */}
               {item.type === 'file' && (
-                <div className="flex items-center justify-between gap-3 bg-amber-50/50 dark:bg-amber-950/20 p-3 rounded-lg border border-amber-200/50 dark:border-amber-900/30">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="p-2 bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 rounded-lg shrink-0">
-                      <FileIcon className="w-5 h-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                        {item.title || item.metadata?.file?.name}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {item.metadata?.file?.size ? formatBytes(item.metadata.file.size) : '파일'}
-                      </p>
-                    </div>
-                  </div>
+                <div className="space-y-2">
+                  {/* 사용자가 작성한 별도 메모/제목이 있을 때 표시 */}
+                  {item.title && filesList.length > 0 && !filesList.some((f) => f.name === item.title) && (
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-snug">
+                      {item.title}
+                    </p>
+                  )}
 
-                  <button
-                    type="button"
-                    onClick={handleDownloadFile}
-                    disabled={downloading || isExpired}
-                    className="px-3 py-1.5 bg-white dark:bg-surface-800 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-amber-50 rounded-lg border border-black/[0.06] shadow-sm transition shrink-0 flex items-center gap-1 disabled:opacity-50"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>{downloading ? '준비중...' : '다운로드'}</span>
-                  </button>
+                  {filesList.length > 1 ? (
+                    /* 다중 파일 카드 UI */
+                    <div className="bg-amber-50/50 dark:bg-amber-950/20 p-3 rounded-xl border border-amber-200/50 dark:border-amber-900/30 space-y-2.5">
+                      {/* 헤더: 파일 개수, 총 용량, 전체 다운로드 버튼 */}
+                      <div className="flex items-center justify-between gap-2 pb-2 border-b border-amber-200/60 dark:border-amber-900/40 text-xs">
+                        <div className="flex items-center gap-1.5 font-medium text-amber-900 dark:text-amber-200">
+                          <FileIcon className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                          <span>첨부 파일 {filesList.length}개</span>
+                          <span className="text-[11px] text-amber-700/70 dark:text-amber-400/70 font-normal">
+                            ({formatBytes(filesList.reduce((acc, f) => acc + (f.size || 0), 0))})
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleDownloadAll}
+                          disabled={downloadingAll || isExpired}
+                          className="px-2.5 py-1 bg-white dark:bg-surface-800 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-amber-100/60 dark:hover:bg-surface-700 rounded-lg border border-amber-200/80 dark:border-surface-700 shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 shrink-0"
+                        >
+                          {downloadingAll ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                          ) : (
+                            <Download className="w-3.5 h-3.5" />
+                          )}
+                          <span>{downloadingAll ? '다운로드 중...' : '전체 다운로드'}</span>
+                        </button>
+                      </div>
+
+                      {/* 개별 파일 목록 */}
+                      <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
+                        {filesList.map((file, fIdx) => (
+                          <div
+                            key={`${file.storagePath}-${fIdx}`}
+                            className="flex items-center justify-between gap-2 p-2 bg-white/90 dark:bg-surface-800/90 rounded-lg border border-amber-200/40 dark:border-amber-900/20 text-xs hover:border-amber-300 dark:hover:border-amber-800/50 transition"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <FileIcon className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                              <span className="truncate font-medium text-gray-800 dark:text-gray-200" title={file.name}>
+                                {file.name}
+                              </span>
+                              <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">
+                                ({formatBytes(file.size)})
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => downloadTargetFile(file)}
+                              disabled={downloadingPath === file.storagePath || isExpired}
+                              className="px-2 py-1 text-gray-600 hover:text-amber-800 dark:text-gray-300 dark:hover:text-amber-200 hover:bg-amber-100/70 dark:hover:bg-amber-950/40 rounded transition shrink-0 flex items-center gap-1 disabled:opacity-50 border border-transparent hover:border-amber-200"
+                              title="이 파일 다운로드"
+                            >
+                              {downloadingPath === file.storagePath ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Download className="w-3.5 h-3.5" />
+                              )}
+                              <span className="text-[11px] hidden sm:inline">다운로드</span>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    /* 단일 파일 카드 UI */
+                    <div className="flex items-center justify-between gap-3 bg-amber-50/50 dark:bg-amber-950/20 p-3 rounded-lg border border-amber-200/50 dark:border-amber-900/30">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="p-2 bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 rounded-lg shrink-0">
+                          <FileIcon className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                            {filesList[0]?.name || item.title || item.metadata?.file?.name}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {filesList[0]?.size
+                              ? formatBytes(filesList[0].size)
+                              : item.metadata?.file?.size
+                                ? formatBytes(item.metadata.file.size)
+                                : '파일'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => filesList[0] && downloadTargetFile(filesList[0])}
+                        disabled={downloadingPath === filesList[0]?.storagePath || isExpired}
+                        className="px-3 py-1.5 bg-white dark:bg-surface-800 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-amber-50 rounded-lg border border-black/[0.06] shadow-sm transition shrink-0 flex items-center gap-1 disabled:opacity-50"
+                      >
+                        {downloadingPath === filesList[0]?.storagePath ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Download className="w-3.5 h-3.5" />
+                        )}
+                        <span>{downloadingPath === filesList[0]?.storagePath ? '준비중...' : '다운로드'}</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
