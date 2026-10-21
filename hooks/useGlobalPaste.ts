@@ -4,10 +4,11 @@ import { useEffect } from 'react';
 
 interface UseGlobalPasteProps {
   onPasteText: (text: string) => void;
-  onPasteFile: (file: File) => void;
+  onPasteFile?: (file: File) => void;
+  onPasteFiles?: (files: File[]) => void;
 }
 
-export function useGlobalPaste({ onPasteText, onPasteFile }: UseGlobalPasteProps) {
+export function useGlobalPaste({ onPasteText, onPasteFile, onPasteFiles }: UseGlobalPasteProps) {
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
       // If user is already focused on an editable element (input, textarea), let default browser behavior happen
@@ -26,8 +27,12 @@ export function useGlobalPaste({ onPasteText, onPasteFile }: UseGlobalPasteProps
       // 1. Check if files (e.g. image from clipboard screenshot) exist
       if (e.clipboardData.files && e.clipboardData.files.length > 0) {
         e.preventDefault();
-        const file = e.clipboardData.files[0];
-        onPasteFile(file);
+        const files = Array.from(e.clipboardData.files);
+        if (onPasteFiles) {
+          onPasteFiles(files);
+        } else if (onPasteFile) {
+          onPasteFile(files[0]);
+        }
         return;
       }
 
@@ -43,5 +48,5 @@ export function useGlobalPaste({ onPasteText, onPasteFile }: UseGlobalPasteProps
     return () => {
       window.removeEventListener('paste', handlePaste);
     };
-  }, [onPasteText, onPasteFile]);
+  }, [onPasteText, onPasteFile, onPasteFiles]);
 }

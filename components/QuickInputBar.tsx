@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { ItemType, OgMetadata } from '@/types/item';
-import { formatRemindTime } from '@/lib/utils';
+import { formatRemindTime, formatBytes } from '@/lib/utils';
 
 interface QuickInputBarProps {
   onAddItem: (itemData: {
@@ -26,7 +26,7 @@ interface QuickInputBarProps {
     remind_at?: string | null;
     expires_at?: string | null;
   }) => Promise<any>;
-  externalContent?: { text?: string; file?: File } | null;
+  externalContent?: { text?: string; file?: File; files?: File[] } | null;
   onClearExternalContent?: () => void;
   isLoggedIn?: boolean;
   onRequireAuth?: () => void;
@@ -41,8 +41,9 @@ export function QuickInputBar({
 }: QuickInputBarProps) {
   const [content, setContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
 
   // Quick Chips active states
   const [remindAt, setRemindAt] = useState<string | null>(null);
@@ -54,10 +55,33 @@ export function QuickInputBar({
   const dateInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
 
+  // Add files avoiding duplicates
+  const handleFilesSelected = (newFiles: File[]) => {
+    if (newFiles.length === 0) return;
+    setAttachedFiles((prev) => {
+      const existingKeys = new Set(prev.map((f) => `${f.name}-${f.size}-${f.lastModified}`));
+      const uniqueNewFiles = newFiles.filter(
+        (f) => !existingKeys.has(`${f.name}-${f.size}-${f.lastModified}`)
+      );
+      return [...prev, ...uniqueNewFiles];
+    });
+  };
+
+  const handleRemoveFile = (indexToRemove: number) => {
+    setAttachedFiles((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
+  const handleClearAllFiles = () => {
+    setAttachedFiles([]);
+  };
+
   // Handle external paste from global listener
   useEffect(() => {
-    if (externalContent?.file) {
-      handleFileSelected(externalContent.file);
+    if (externalContent?.files && externalContent.files.length > 0) {
+      handleFilesSelected(externalContent.files);
+      onClearExternalContent?.();
+    } else if (externalContent?.file) {
+      handleFilesSelected([externalContent.file]);
       onClearExternalContent?.();
     } else if (externalContent?.text) {
       handleAutoSubmit(externalContent.text);
@@ -74,22 +98,15 @@ export function QuickInputBar({
   }, [content]);
 
   // Determine type dynamically based on input content
-  const detectType = (text: string, hasFile: boolean): ItemType => {
-    if (hasFile) return 'file';
+  const detectType = (text: string, hasFiles: boolean): ItemType => {
+    if (hasFiles) return 'file';
     const trimmed = text.trim();
     if (/^https?:\/\//i.test(trimmed)) return 'link';
     if (/^\[\s*\]\s+/i.test(trimmed) || /^-\s+/i.test(trimmed) || isTodoMode) return 'todo';
     return 'text';
   };
 
-  const detectedType = detectType(content, !!attachedFile);
-
-  const handleFileSelected = (file: File) => {
-    setAttachedFile(file);
-    if (!content.trim()) {
-      setContent(file.name);
-    }
-  };
+  const detectedType = detectType(content, attachedFiles.length > 0);
 
   const handleChipTodo = () => {
     if (content.startsWith('[ ] ')) {
@@ -178,68 +195,112 @@ export function QuickInputBar({
       return;
     }
 
-    if ((!content.trim() && !attachedFile) || isSubmitting) return;
+    if ((!content.trim() && attachedFiles.length === 0) || isSubmitting) return;
 
     setIsSubmitting(true);
     try {
       const rawText = content.trim();
-      const currentType = detectType(rawText, !!attachedFile);
 
-      if (currentType === 'file' && attachedFile) {
-        // Handle File upload
-        const uploadResult = await uploadFile(attachedFile);
-        await onAddItem({
-          type: 'file',
-          title: attachedFile.name,
-          content: uploadResult.path,
-          metadata: {
-            file: {
-              name: attachedFile.name,
-              size: attachedFile.size,
-              mimeType: attachedFile.type,
-              storagePath: uploadResult.path,
-              downloadUrl: uploadResult.publicUrl,
+      // 1. 첨부된 파일들이 있는 경우: 모든 파일 순차 업로드 및 등록
+      if (attachedFiles.length > 0) {
+        setUploadProgress({ current: 0, total: attachedFiles.length });
+
+        for (let i = 0; i < attachedFiles.length; i++) {
+          const file = attachedFiles[i];
+          setUploadProgress({ current: i + 1, total: attachedFiles.length });
+          const uploadResult = await uploadFile(file);
+          await onAddItem({
+            type: 'file',
+            title: file.name,
+            content: uploadResult.path,
+            metadata: {
+              file: {
+                name: file.name,
+                size: file.size,
+                mimeType: file.type,
+                storagePath: uploadResult.path,
+                downloadUrl: uploadResult.publicUrl,
+              },
             },
-          },
-          remind_at: remindAt,
-          expires_at: expiresAt,
-        });
-      } else if (currentType === 'link') {
-        // Handle Link & OG parse
-        const og = await fetchOgMetadata(rawText);
-        await onAddItem({
-          type: 'link',
-          title: og?.title || rawText,
-          content: rawText,
-          metadata: { og: og || undefined },
-          remind_at: remindAt,
-          expires_at: expiresAt,
-        });
-      } else if (currentType === 'todo') {
-        // Handle Todo
-        const cleanTitle = rawText.replace(/^\[\s*\]\s*/, '').replace(/^-\s*/, '');
-        await onAddItem({
-          type: 'todo',
-          title: cleanTitle,
-          content: rawText,
-          remind_at: remindAt,
-          expires_at: expiresAt,
-        });
+            remind_at: remindAt,
+            expires_at: expiresAt,
+          });
+        }
+        setUploadProgress(null);
+
+        // 파일과 함께 텍스트 메모를 함께 남긴 경우 메모 아이템도 생성
+        if (rawText) {
+          const textType = detectType(rawText, false);
+          if (textType === 'link') {
+            const og = await fetchOgMetadata(rawText);
+            await onAddItem({
+              type: 'link',
+              title: og?.title || rawText,
+              content: rawText,
+              metadata: { og: og || undefined },
+              remind_at: remindAt,
+              expires_at: expiresAt,
+            });
+          } else if (textType === 'todo') {
+            const cleanTitle = rawText.replace(/^\[\s*\]\s*/, '').replace(/^-\s*/, '');
+            await onAddItem({
+              type: 'todo',
+              title: cleanTitle,
+              content: rawText,
+              remind_at: remindAt,
+              expires_at: expiresAt,
+            });
+          } else {
+            const firstLine = rawText.split('\n')[0].substring(0, 50);
+            await onAddItem({
+              type: 'text',
+              title: firstLine,
+              content: rawText,
+              remind_at: remindAt,
+              expires_at: expiresAt,
+            });
+          }
+        }
       } else {
-        // Handle Plain Text
-        const firstLine = rawText.split('\n')[0].substring(0, 50);
-        await onAddItem({
-          type: 'text',
-          title: firstLine,
-          content: rawText,
-          remind_at: remindAt,
-          expires_at: expiresAt,
-        });
+        // 2. 첨부 파일 없이 텍스트만 작성된 경우
+        const currentType = detectType(rawText, false);
+        if (currentType === 'link') {
+          // Handle Link & OG parse
+          const og = await fetchOgMetadata(rawText);
+          await onAddItem({
+            type: 'link',
+            title: og?.title || rawText,
+            content: rawText,
+            metadata: { og: og || undefined },
+            remind_at: remindAt,
+            expires_at: expiresAt,
+          });
+        } else if (currentType === 'todo') {
+          // Handle Todo
+          const cleanTitle = rawText.replace(/^\[\s*\]\s*/, '').replace(/^-\s*/, '');
+          await onAddItem({
+            type: 'todo',
+            title: cleanTitle,
+            content: rawText,
+            remind_at: remindAt,
+            expires_at: expiresAt,
+          });
+        } else {
+          // Handle Plain Text
+          const firstLine = rawText.split('\n')[0].substring(0, 50);
+          await onAddItem({
+            type: 'text',
+            title: firstLine,
+            content: rawText,
+            remind_at: remindAt,
+            expires_at: expiresAt,
+          });
+        }
       }
 
       // Reset state
       setContent('');
-      setAttachedFile(null);
+      setAttachedFiles([]);
       setRemindAt(null);
       setExpiresAt(null);
       setIsTodoMode(false);
@@ -251,6 +312,7 @@ export function QuickInputBar({
       alert('저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
       setIsSubmitting(false);
+      setUploadProgress(null);
     }
   };
 
@@ -280,9 +342,11 @@ export function QuickInputBar({
       return;
     }
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFileSelected(e.dataTransfer.files[0]);
+      handleFilesSelected(Array.from(e.dataTransfer.files));
     }
   };
+
+  const totalFilesSize = attachedFiles.reduce((acc, f) => acc + f.size, 0);
 
   return (
     <div
@@ -296,19 +360,44 @@ export function QuickInputBar({
       onDrop={handleDrop}
     >
       <form onSubmit={handleSubmit} className="p-3.5 sm:p-4">
-        {/* Attached file preview chip */}
-        {attachedFile && (
-          <div className="mb-2.5 flex items-center justify-between px-3 py-1.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/40 rounded-lg text-xs text-amber-800 dark:text-amber-300">
-            <span className="truncate max-w-[85%] font-medium">
-              📎 {attachedFile.name} ({(attachedFile.size / 1024).toFixed(1)} KB)
-            </span>
-            <button
-              type="button"
-              onClick={() => setAttachedFile(null)}
-              className="p-0.5 hover:bg-amber-200/50 rounded transition"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+        {/* Attached files preview chips */}
+        {attachedFiles.length > 0 && (
+          <div className="mb-2.5 space-y-1.5">
+            <div className="flex items-center justify-between text-xs text-amber-900 dark:text-amber-300 px-1 font-medium">
+              <span>
+                📎 첨부된 파일 ({attachedFiles.length}개 / {formatBytes(totalFilesSize)})
+              </span>
+              <button
+                type="button"
+                onClick={handleClearAllFiles}
+                className="text-[11px] text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 transition"
+              >
+                모두 지우기
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 rounded-lg">
+              {attachedFiles.map((file, idx) => (
+                <div
+                  key={`${file.name}-${idx}-${file.size}`}
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-white dark:bg-surface-800 border border-amber-300/50 dark:border-amber-700/50 rounded-md text-xs text-amber-900 dark:text-amber-200 shadow-sm transition hover:border-amber-400"
+                >
+                  <span className="truncate max-w-[180px] sm:max-w-[240px] font-medium" title={file.name}>
+                    {file.name}
+                  </span>
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">
+                    ({formatBytes(file.size)})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveFile(idx)}
+                    className="p-0.5 hover:bg-amber-100 dark:hover:bg-amber-900/50 rounded transition text-gray-400 hover:text-red-500 ml-0.5"
+                    title="제거"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -341,7 +430,9 @@ export function QuickInputBar({
             }}
             placeholder={
               isLoggedIn
-                ? '기억할 모든 것... 링크, [ ] 할 일, 메모, 파일 드롭 (Ctrl+V 지원)'
+                ? attachedFiles.length > 0
+                  ? `선택된 ${attachedFiles.length}개 파일과 함께 메모를 남기려면 입력하세요 (Enter로 전송)`
+                  : '기억할 모든 것... 링크, [ ] 할 일, 메모, 여러 파일 드롭 (Ctrl+V 지원)'
                 : '로그인 후 나만의 메모, 할 일, 링크를 안전하게 기록해 보세요 (클릭 시 로그인)'
             }
             className="w-full resize-none bg-transparent text-sm sm:text-base text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none leading-relaxed py-1"
@@ -352,10 +443,12 @@ export function QuickInputBar({
             <input
               type="file"
               ref={fileInputRef}
+              multiple
               className="hidden"
               onChange={(e) => {
-                if (e.target.files && e.target.files[0]) {
-                  handleFileSelected(e.target.files[0]);
+                if (e.target.files && e.target.files.length > 0) {
+                  handleFilesSelected(Array.from(e.target.files));
+                  e.target.value = '';
                 }
               }}
             />
@@ -368,7 +461,7 @@ export function QuickInputBar({
                 }
                 fileInputRef.current?.click();
               }}
-              title="파일 첨부"
+              title="파일 첨부 (여러 개 선택 가능)"
               className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-surface-800 rounded-lg transition"
             >
               <Paperclip className="w-4 h-4" />
@@ -376,9 +469,9 @@ export function QuickInputBar({
 
             <button
               type="submit"
-              disabled={(!content.trim() && !attachedFile) || isSubmitting}
+              disabled={(!content.trim() && attachedFiles.length === 0) || isSubmitting}
               className={`p-1.5 rounded-lg transition ${
-                content.trim() || attachedFile
+                content.trim() || attachedFiles.length > 0
                   ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900 hover:opacity-90'
                   : 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
               }`}
@@ -494,18 +587,25 @@ export function QuickInputBar({
             </button>
           </div>
 
-          {/* Auto Detection indicator */}
-          {(content.trim() || attachedFile) && (
-            <div className="text-[11px] text-gray-400 dark:text-gray-500 flex items-center gap-1 pr-1 font-mono">
-              <Sparkles className="w-3 h-3 text-amber-500" />
-              <span>
-                {detectedType === 'link' && '링크 감지됨'}
-                {detectedType === 'todo' && '할 일 감지됨'}
-                {detectedType === 'file' && '파일 모드'}
-                {detectedType === 'text' && '텍스트 메모'}
+          {/* Auto Detection indicator & upload status */}
+          <div className="flex items-center gap-2">
+            {uploadProgress && (
+              <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400 animate-pulse">
+                업로드 중 ({uploadProgress.current}/{uploadProgress.total})...
               </span>
-            </div>
-          )}
+            )}
+            {(content.trim() || attachedFiles.length > 0) && (
+              <div className="text-[11px] text-gray-400 dark:text-gray-500 flex items-center gap-1 pr-1 font-mono">
+                <Sparkles className="w-3 h-3 text-amber-500" />
+                <span>
+                  {detectedType === 'link' && '링크 감지됨'}
+                  {detectedType === 'todo' && '할 일 감지됨'}
+                  {detectedType === 'file' && (attachedFiles.length > 1 ? `파일 ${attachedFiles.length}개 모드` : '파일 모드')}
+                  {detectedType === 'text' && '텍스트 메모'}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </form>
     </div>

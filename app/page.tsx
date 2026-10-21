@@ -18,7 +18,7 @@ import { ShieldCheck } from 'lucide-react';
 function MainFeedContent() {
   const [activeTab, setActiveTab] = useState<'active' | 'archive'>('active');
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilterType>('all');
-  const [pastePayload, setPastePayload] = useState<{ text?: string; file?: File } | null>(null);
+  const [pastePayload, setPastePayload] = useState<{ text?: string; file?: File; files?: File[] } | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isStorageModalOpen, setIsStorageModalOpen] = useState(false);
 
@@ -83,9 +83,21 @@ function MainFeedContent() {
     [currentUser]
   );
 
+  const handlePasteFiles = useCallback(
+    (files: File[]) => {
+      if (!currentUser) {
+        setIsAuthOpen(true);
+        return;
+      }
+      setPastePayload({ files });
+    },
+    [currentUser]
+  );
+
   useGlobalPaste({
     onPasteText: handlePasteText,
     onPasteFile: handlePasteFile,
+    onPasteFiles: handlePasteFiles,
   });
 
   const activeCount = items.filter((item) => !item.is_archived).length;
